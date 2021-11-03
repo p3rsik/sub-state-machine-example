@@ -20,9 +20,9 @@ module Lib
 
 import           Control.Concurrent     (MVar, forkIO, killThread, newEmptyMVar,
                                          putMVar, takeMVar, threadDelay)
-import           Control.Concurrent.STM
-import           Control.Monad.Reader
-import           Control.Monad.STM
+import           Control.Concurrent.STM (TQueue, atomically, newTQueueIO,
+                                         readTQueue, writeTQueue)
+import           Control.Monad          (void)
 import           Data.Kind              (Type)
 
 newtype Key = Key { unKey :: Int }
@@ -48,11 +48,9 @@ class LinearState m where
 
   createEntity :: Key -> m (State m Created)
   awaitCreatedEntity :: TQueue ErasedEntityState -> m (Maybe (State m Created))
-  getCreatedEntity :: ErasedEntityState -> Maybe (State m Created)
 
   processEntity :: State m Created -> m (State m InProcess)
   awaitInProcessEntity :: TQueue ErasedEntityState -> m (Maybe (State m InProcess))
-  getInProcessEntity :: ErasedEntityState -> Maybe (State m InProcess)
 
   completeEntity :: State m InProcess -> m (State m Processed)
 
@@ -61,19 +59,15 @@ instance LinearState IO where
 
   createEntity k = return $ Created k
   awaitCreatedEntity tq = atomically $ do
-    en <- readTQueue tq
-    return $ getCreatedEntity @IO en
-  getCreatedEntity = \case
-    ErasedCreated en -> Just en
-    _                -> Nothing
+    readTQueue tq >>= \case
+      ErasedCreated en -> return $ Just en
+      _                -> return Nothing
 
   processEntity Created {..} = return $ InProcess createdKey
   awaitInProcessEntity tq = atomically $ do
-    en <- readTQueue tq
-    return $ getInProcessEntity @IO en
-  getInProcessEntity = \case
-    ErasedInProcess en -> Just en
-    _                  -> Nothing
+    readTQueue tq >>= \case
+      ErasedInProcess en -> return $ Just en
+      _                  -> return Nothing
 
   completeEntity InProcess {..} = return $ Processed inProcessKey
 
@@ -113,5 +107,6 @@ someFunc = do
   tid <- forkIO $ test mv
   threadDelay 1000
   killThread tid
+  putStrLn "Parent thread is killed"
   takeMVar mv
   return ()
