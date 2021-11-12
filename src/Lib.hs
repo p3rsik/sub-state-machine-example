@@ -1,27 +1,28 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeSynonymInstances  #-}
-{-# LANGUAGE DeriveAnyClass        #-}
-{-# LANGUAGE DeriveGeneric         #-}
 
 module Lib
     ( someFunc
     ) where
 
+import           Control.Monad       (void)
 import qualified Control.Monad.State as S
 import           Data.Kind           (Type)
+import           Data.Void           (Void)
 import           GHC.Generics
-import Data.Void (Void)
-import Control.Monad (void)
 
 newtype Key = Key { unKey :: Int }
 
@@ -80,6 +81,11 @@ data EntityState (t :: EntityType) s where
   InProcess :: { inProcessKey :: Key } -> EntityState t InProcess
   Processed :: { processedKey :: Key } -> EntityState t Processed
 
+data ErasedEntityState where
+  ErasedCreated :: EntityState t Created -> ErasedEntityState
+  ErasedInProcess :: EntityState t InProcess -> ErasedEntityState
+  ErasedProcessed :: EntityState t Processed -> ErasedEntityState
+
 class MetaMachine m where
   type State (t :: EntityType) m :: Type -> Type
 
@@ -124,10 +130,13 @@ someFunc :: IO ()
 someFunc = return . const () . flip S.runState First $ do
   example2
   t <- S.get
+  case t of
+    First  -> do
+      en <- getInProcessEntity @_ @'First (Key 1)
+      delegateEntity2 en processEntity
+      return ()
+    Second -> do
+      en <- getInProcessEntity @_ @'Second (Key 2)
+      delegateEntity2 en processEntity
+      return ()
   return ()
-  -- en <- case t of
-  --   First -> do
-  --     getInProcessEntity @_ @'First $ Key 1
-  --   Second -> do
-  --     getInProcessEntity @_ @'Second $ Key 1
-  -- delegateEntity2 en processEntity
